@@ -20,21 +20,32 @@ import requests
 filePath        ="C:\\Ziitech\\PHSync\\"
 logFilePath     =filePath+"Log"
 ConfigJsonFile  = filePath +"Config.json"
-#fileServerURL   = "https://cdn.ziicloud.com/_misc/PublicHoliday/"
-fileServerURL   = "http://mel.ziipos.com:8066/_misc/PublicHoliday/"
+fileServerURL   = "https://cdn.ziicloud.com/_misc/PublicHoliday/"
+#fileServerURL   = "http://mel.ziipos.com:8066/_misc/PublicHoliday/"
 downloadFilePath = filePath + "DownloadFiles\\"
 savedFile = downloadFilePath + "currentList.xlsx"
 
 
-def downloadPublicHolidayExcelFromServer(fileName):
-  downloadURL=fileServerURL+fileName
+
+def insertDateinFilename(currentDate,filename):
+    # split the filename into base and extension
+    now = datetime.datetime.now()
+    base, ext = os.path.splitext(filename)
+    newDate = "_"+currentDate
+    newFilename = f"{base}{newDate}{ext}"
+
+    return newFilename
+
+def downloadPublicHolidayExcelFromServer(Merchantfolder,fileName):
+  if Merchantfolder=="":
+    downloadURL=fileServerURL+Merchantfolder+fileName
+    print("downloadURL: ", downloadURL)
+  else:
+    downloadURL=fileServerURL+Merchantfolder+"/"+fileName
+    
+    
   downloadFile= downloadFilePath + fileName   
-  # try:
-  #     downloadURL=fileServerURL+fileName   
-  #     wget.download(downloadURL, fileName)
-  # except wget.Error as ex:
-  #     print("Download Files error")
-  #     writeErrorLog("An error occurred while downloading the public holiday file")  
+  
   try:
         # send HTTP GET
         response = requests.get(downloadURL, stream=True, timeout=10)
@@ -44,7 +55,7 @@ def downloadPublicHolidayExcelFromServer(fileName):
         
         os.makedirs(downloadFilePath, exist_ok=True)
         
-        # 写入文件
+        # download the file
         with open(downloadFile, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
@@ -55,7 +66,7 @@ def downloadPublicHolidayExcelFromServer(fileName):
     
   except requests.exceptions.HTTPError as e:
       print(f"download failed: {e}")
-      writeErrorLog(f"Download Failed, HTTP error: {e}")
+      #writeErrorLog(f"Download Failed, HTTP error: {e}")
   except requests.exceptions.ConnectionError:
       print("download failed, please check your network connection")
       writeErrorLog("Download Failed, Connection error, please check your network connection")
@@ -74,7 +85,7 @@ def downloadPublicHolidayExcelFromServer(fileName):
 
  
  
-def detailed_excel_comparison(file1, file2):
+def detailedExcelComparison(file1, file2):
    
     df1 = pd.read_excel(file1, index_col=None,dtype = str)
     df2 = pd.read_excel(file2, index_col=None,dtype = str)
@@ -94,7 +105,7 @@ def writeLog(LogData):
   now = datetime.datetime.now()
   nDate = now.strftime('%Y%m%d')
   logTime= now.strftime('%Y%m%d %H:%M:%S')
-  logFilename = nDate + '.txt'
+  logFilename = 'Log.txt'
   log_file = os.path.join(logFilePath, logFilename)
   if not os.path.exists(logFilePath):
         os.makedirs(logFilePath)
@@ -147,6 +158,7 @@ def createConfigFile():
             "Trusted_Connection":"YES",
             "SourceUsername":"sa",
             "SourcePassword":"0000",
+            "Merchantfolder":"",
             "PublicHolidaySourceFile":"PublicHolidayTemplate_1.xlsx"
            
             }
@@ -191,36 +203,18 @@ def writeConfigFile(configData):
     return 1
    
   
-    
-def ConnectionTest():
-    connectionTestResult = 0
-    config=readConfigFile()
-    SourceSQLServer = config["SourceSQLServer"].replace("\\\\","\\")
-    SourceDatabase = config["SourceDatabase"]
-    SourceUsername = config["SourceUsername"]
-    SourcePassword = config["SourcePassword"]
-    trustConnection = config["Trusted_Connection"]
-    if trustConnection=="YES":
-      connect_string="DRIVER={SQL Server}; SERVER="+SourceSQLServer+"; DATABASE="+SourceDatabase+"; Trusted_Connection=yes;"
-    else:
-      connect_string="DRIVER={SQL Server}; SERVER="+SourceSQLServer+"; DATABASE="+SourceDatabase+"; UID="+SourceUsername+"; PWD="+SourcePassword
-    try:
-        PassSQLServerConnection = pyodbc.connect(connect_string)
-        print("{c} is working".format(c=connect_string))
-        PassSQLServerConnection.close()
-        connectionTestResult = 1
-    except pyodbc.Error as ex:
-        print("{c} is not working".format(c=connect_string))
-        writeErrorLog("DB Connection Error: "+connect_string)
-    
-        
-    return connectionTestResult
   
 
 
+def setEmptySQl():
+   sqlStatements = []
+   sqlStatements.append("Update Profile set AutoSurcharge =0;")
+   sqlStatements.append("DELETE from ChargeScope;")
+   return sqlStatements
 
 
-def ProcessExcelToSQL(filePath,ProcessDate,ProcessTime):
+
+def processExcelToSQL(filePath,ProcessDate,ProcessTime):
 
     try:
         df = pd.read_excel(filePath)
@@ -321,6 +315,30 @@ def execute(sqlStatements):
 
 
 
+    
+def ConnectionTest():
+    connectionTestResult = 0
+    config=readConfigFile()
+    SourceSQLServer = config["SourceSQLServer"].replace("\\\\","\\")
+    SourceDatabase = config["SourceDatabase"]
+    SourceUsername = config["SourceUsername"]
+    SourcePassword = config["SourcePassword"]
+    trustConnection = config["Trusted_Connection"]
+    if trustConnection=="YES":
+      connect_string="DRIVER={SQL Server}; SERVER="+SourceSQLServer+"; DATABASE="+SourceDatabase+"; Trusted_Connection=yes;"
+    else:
+      connect_string="DRIVER={SQL Server}; SERVER="+SourceSQLServer+"; DATABASE="+SourceDatabase+"; UID="+SourceUsername+"; PWD="+SourcePassword
+    try:
+        PassSQLServerConnection = pyodbc.connect(connect_string)
+        print("{c} is working".format(c=connect_string))
+        PassSQLServerConnection.close()
+        connectionTestResult = 1
+    except pyodbc.Error as ex:
+        print("{c} is not working".format(c=connect_string))
+        writeErrorLog("DB Connection Error: "+connect_string)
+    
+        
+    return connectionTestResult
 
 
 
@@ -331,52 +349,59 @@ def systemRun():
   nDate = now.strftime('%Y%m%d')
   pDate = now.strftime('%Y-%m-%d')
 
-  
-  time= datetime.datetime.now().strftime('%H%M%S')
-  # logFilename = nDate + '_' + time + '.txt'
-  # lines = []
-  # hRecord = {}
+
   currentTime=now.strftime('%Y-%m-%d %H:%M:%S')
   
   config=readConfigFile()
   
-  downloadPublicHolidayExcelFromServer(config["PublicHolidaySourceFile"])
+  downloadfileName =insertDateinFilename(nDate,config["PublicHolidaySourceFile"])
+  #download file format: filename_20230901.xlsx
+  downloadPublicHolidayExcelFromServer(config["Merchantfolder"],downloadfileName)
   
-  newExcelFile=downloadFilePath+config["PublicHolidaySourceFile"]
+  newExcelFile=downloadFilePath+downloadfileName
   
  
   # Start Main Process
   compaireFlag = False
   
+  
   if os.path.exists(newExcelFile): # if the file exists run process
     print("New Public Holiday List File: ",newExcelFile)
-    if os.path.exists(savedFile):
-      compaireFlag=detailed_excel_comparison(savedFile, newExcelFile)
-      
-    else:
-      compaireFlag=False
-      
-    if compaireFlag==False:
-      
-        SqlList=ProcessExcelToSQL(newExcelFile,pDate, currentTime)
-        execute(SqlList)
-        print("Public Holiday List has been updated, start to process the new list.")
-        writeLog("Public Holiday List has been updated, start to process the new list.")
-        #update saved file
-        if os.path.exists(savedFile):
-          os.remove(savedFile)
-        os.rename(newExcelFile, savedFile)
+    df = pd.read_excel(newExcelFile)
+    if len(df) > 0:  # if the excel file is not empty, process the data
+      if os.path.exists(savedFile):
+        compaireFlag=detailedExcelComparison(newExcelFile,savedFile) # compare the new excel with the saved file, if the same, no need to update
         
-    if compaireFlag==True:
-       
-        print("Public Holiday List is the same, no need to update.")
-        os.remove(newExcelFile)
+      else:
+        compaireFlag=False
         
+      if compaireFlag==False:
+          sqlList=processExcelToSQL(newExcelFile,pDate, currentTime)
+          execute(sqlList)
+          #update saved file
+          if os.path.exists(savedFile):
+            os.remove(savedFile)
+          os.rename(newExcelFile, savedFile)
+          
+      if compaireFlag==True:      
+          print("Public Holiday List is the same, no need to update.")
+          os.remove(newExcelFile)
+          
+    if len(df) == 0: # if the excel file is empty, set AutoSurcharge to 0 (disable Service Charge Featue) and delete ChargeScope records
+      print("Public Holiday List file is empty, please check the file: "+newExcelFile)
+      writeLog("Public Holiday List file is empty, Set AutoSurcharge to 0, and delete ChargeScope records.")
+      emptysqlList=setEmptySQl()
+      execute(emptysqlList)
+      if os.path.exists(savedFile):
+        os.remove(savedFile)
+      os.rename(newExcelFile, savedFile)
+      writeLog("Public Holiday List file is empty, Set AutoSurcharge to 0, and delete ChargeScope records.") 
+                 
       
   else:
     
     print("Public Holiday List file not found, please check the file path."+newExcelFile)
-    writeErrorLog("Public Holiday List file not found, please check the file path: "+newExcelFile)
+    #writeErrorLog("Public Holiday List file not found, please check the file path: "+newExcelFile)
 
     
   
@@ -388,9 +413,8 @@ def systemRun():
 def inforProcess():
     connectionTestResult=0
 
-    connectionTestResult=ConnectionTest()
+    connectionTestResult=ConnectionTest() # test the connection to the database
     if connectionTestResult==1:
-      print("")
       systemRun()
     else:
       print("DB Connection Error, Please check the connection setting. This program will exit.")

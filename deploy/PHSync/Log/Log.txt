@@ -1,0 +1,4 @@
+20250916 21:45:24 Log File Created: 20250916
+20250916 21:45:24 Create Folder: C:\Ziitech\PHSync\
+20250916 21:45:24 Create ConfigFile: C:\Ziitech\PHSync\Config.json
+20250916 22:08:30 All SQL statements executed successfully.

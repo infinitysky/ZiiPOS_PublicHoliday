@@ -1,0 +1,9 @@
+{
+    "SourceSQLServer": ".\\sqlexpress2008r2",
+    "SourceDatabase": "ZiiPOS_DB",
+    "Trusted_Connection": "YES",
+    "SourceUsername": "sa",
+    "SourcePassword": "0000",
+    "Merchantfolder": "HotStar",
+    "PublicHolidaySourceFile": "HotStart.xlsx"
+}
